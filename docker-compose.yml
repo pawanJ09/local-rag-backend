@@ -38,4 +38,9 @@ services:
       - DOCS_DIR=/data/docs
       - API_KEY=${API_KEY:-changeme-local-dev-key}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173}
+      - TOP_K=${TOP_K:-5}
+      - SIMILARITY_DISTANCE_THRESHOLD=${SIMILARITY_DISTANCE_THRESHOLD:-0.45}
+      - CHUNK_SIZE=${CHUNK_SIZE:-800}
+      - CHUNK_OVERLAP=${CHUNK_OVERLAP:-150}
+      - ALLOWED_EXTENSIONS=${ALLOWED_EXTENSIONS:-.txt,.md,.pdf,.docx}
     restart: unless-stopped
