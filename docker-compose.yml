@@ -34,6 +34,7 @@ services:
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
       - LLM_MODEL=${LLM_MODEL:-llama3.1:8b}
       - CHROMA_DIR=/data/chroma
+      - ANONYMIZED_TELEMETRY=False
       - DOCS_DIR=/data/docs
       - API_KEY=${API_KEY:-changeme-local-dev-key}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173}

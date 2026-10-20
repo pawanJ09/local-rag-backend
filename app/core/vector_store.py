@@ -5,11 +5,16 @@ should import chromadb directly.
 from __future__ import annotations
 
 import chromadb
+from chromadb.config import Settings
 
 
 class ChromaStore:
     def __init__(self, persist_dir: str, collection_name: str):
-        self._client = chromadb.PersistentClient(path=persist_dir)
+        # Chroma sends anonymous usage telemetry (to PostHog) by default.
+        # This project is local-only, so it is disabled explicitly.
+        self._client = chromadb.PersistentClient(
+            path=persist_dir, settings=Settings(anonymized_telemetry=False)
+        )
         # Chroma defaults to squared-L2 distance. The similarity threshold in
         # config.py is defined on cosine distance, so set the space explicitly.
         # NOTE: this only applies when the collection is first created; an
