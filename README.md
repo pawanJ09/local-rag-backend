@@ -9,7 +9,7 @@ the HTTP API below.
 ## Quickstart
 
 ```bash
-cp .env.example .env     # adjust models/key if desired
+cp .env.example .env     # adjust models/key/DOCS_HOST_DIR if desired
 make up                  # docker compose up -d
 make pull-models         # one-time: pulls embedding + LLM models into the ollama container
 make ingest               # triggers ingestion of ./docs
@@ -80,7 +80,19 @@ repo; that's `local-rag-deploy`'s `test-stack.yml`).
 Unsupported or unreadable files are skipped and logged in the ingest job's
 `skipped_files`, not treated as a failure.
 
+## Choosing which folder to ingest
+
+Set `DOCS_HOST_DIR` in `.env` to any folder on your machine (default `./docs`).
+It is mounted read-only into the container at `/data/docs`, which is what the
+backend scans (recursively). After changing it, run `docker compose up -d` so
+the container is recreated with the new mount, then `POST /ingest`. On macOS
+the folder must be under a path Docker Desktop is allowed to share.
+
 ## Known nuances / deviations from the original checklist (flagged, not hidden)
+
+- **`DOCS_HOST_DIR` env var** (compose volume source) wasn't in the original
+  checklist; added so the ingest folder is set from `.env` instead of editing
+  `docker-compose.yml`.
 
 - **`app/deps.py`** wasn't itemized in the agreed backend file tree. FastAPI's
   dependency-injection pattern needed a composition root somewhere; putting

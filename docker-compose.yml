@@ -25,7 +25,7 @@ services:
     depends_on:
       - ollama
     volumes:
-      - ./docs:/data/docs:ro
+      - ${DOCS_HOST_DIR:-./docs}:/data/docs:ro
       - ./chroma_data:/data/chroma
     ports:
       - "8000:8000"

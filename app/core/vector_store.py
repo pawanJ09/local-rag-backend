@@ -10,7 +10,13 @@ import chromadb
 class ChromaStore:
     def __init__(self, persist_dir: str, collection_name: str):
         self._client = chromadb.PersistentClient(path=persist_dir)
-        self._collection = self._client.get_or_create_collection(name=collection_name)
+        # Chroma defaults to squared-L2 distance. The similarity threshold in
+        # config.py is defined on cosine distance, so set the space explicitly.
+        # NOTE: this only applies when the collection is first created; an
+        # existing collection keeps its original space (see README).
+        self._collection = self._client.get_or_create_collection(
+            name=collection_name, metadata={"hnsw:space": "cosine"}
+        )
 
     # ---- VectorStore ----
 
