@@ -3,7 +3,12 @@ import time
 
 import pytest
 
-from app.core.ingest_engine import IngestEngine, _chunk_text, _file_hash
+from app.core.ingest_engine import (
+    IngestEngine,
+    _chunk_text,
+    _file_hash,
+    _normalize_layout_whitespace,
+)
 
 
 class FakeEmbedder:
@@ -174,3 +179,17 @@ def test_file_hash_changes_when_content_changes(tmp_path):
     f.write_text("version 2")
     h2 = _file_hash(f)
     assert h1 != h2
+
+
+# ---------- PDF layout normalization ----------
+
+def test_normalize_layout_whitespace_collapses_padding_keeps_columns():
+    raw = "Monthly Rent" + " " * 60 + "Security Deposit\n" + " " * 40 + "2900.00" + " " * 50 + "2900.00"
+    out = _normalize_layout_whitespace(raw)
+    assert out.splitlines()[0] == "Monthly Rent  Security Deposit"
+    assert out.splitlines()[1] == "2900.00  2900.00"
+
+
+def test_normalize_layout_whitespace_squeezes_blank_lines():
+    out = _normalize_layout_whitespace("a\n\n\n\n   \nb")
+    assert out == "a\n\nb"

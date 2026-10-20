@@ -111,6 +111,13 @@ the folder must be under a path Docker Desktop is allowed to share.
   manifest file. This avoids a new persisted artifact outside the agreed
   structure, at the cost of one full metadata scan per ingest run — fine at
   this project's scale, worth revisiting if the corpus grows very large.
+- **PDF text uses `pypdf` layout mode** (plus whitespace normalization) so
+  filled-in form values stay next to their labels. Found with real lease PDFs,
+  where default extraction put "Monthly Rent" and the amount far apart, so the
+  amount never matched questions about rent. Existing indexed PDFs must be
+  re-ingested (delete their sources or reset `chroma_data/`), since unchanged
+  files are skipped by hash. Limit: two-column rows lose their column
+  alignment once spaces are collapsed.
 - **Chunking is character-count based**, not token-based (no tokenizer
   dependency pulled in). `CHUNK_SIZE`/`CHUNK_OVERLAP` are in characters.
   Simple and dependency-free; can swap for a token-aware splitter later if

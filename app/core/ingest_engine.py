@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -40,6 +41,24 @@ def _file_hash(path: Path) -> str:
     return h.hexdigest()
 
 
+def _normalize_layout_whitespace(text: str) -> str:
+    """pypdf's layout mode pads text with long runs of spaces to mimic column
+    positions. Collapse those runs (keeping a small gap so columns stay
+    visually separated) and squeeze repeated blank lines, so chunk_size
+    isn't wasted on padding."""
+    out: list[str] = []
+    prev_blank = False
+    for line in text.splitlines():
+        line = re.sub(r"[ \t]{2,}", "  ", line).strip()
+        if line:
+            out.append(line)
+            prev_blank = False
+        elif not prev_blank:
+            out.append("")
+            prev_blank = True
+    return "\n".join(out)
+
+
 def _extract_text(path: Path) -> str | None:
     """Returns extracted plain text, or None if the format isn't supported
     or extraction fails. Callers treat None as 'skip this file'."""
@@ -51,7 +70,17 @@ def _extract_text(path: Path) -> str | None:
             from pypdf import PdfReader
 
             reader = PdfReader(str(path))
-            return "\n".join(page.extract_text() or "" for page in reader.pages)
+            pages: list[str] = []
+            for page in reader.pages:
+                # Layout mode keeps form values (rent, dates, names) next to
+                # their labels. Default extraction returns text in file
+                # order, which separates them on filled-in forms.
+                try:
+                    text = page.extract_text(extraction_mode="layout") or ""
+                except Exception:
+                    text = page.extract_text() or ""
+                pages.append(_normalize_layout_whitespace(text))
+            return "\n".join(pages)
         if suffix == ".docx":
             import docx
 
