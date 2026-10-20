@@ -16,11 +16,33 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.core.interfaces import EmbeddingProvider, VectorStore
+
+
+# Bump when text extraction changes in a way that alters stored chunk text, so
+# already-indexed files get re-extracted automatically.
+EXTRACTION_VERSION = "pdfplumber-1"
+
+
+def _humanize_path(source_path: str) -> str:
+    """'CrystalLake/2024/Lease_Agreement-v2.pdf' ->
+    'Crystal Lake / 2024 / Lease Agreement v2'. Splits camelCase and
+    separators so folder/file names read as words to the embedding model."""
+    p = Path(source_path)
+    parts = list(p.parent.parts) + [p.stem]
+    words = []
+    for part in parts:
+        part = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", part)
+        part = re.sub(r"[_\-.]+", " ", part)
+        part = re.sub(r"\s+", " ", part).strip()
+        if part:
+            words.append(part)
+    return " / ".join(words)
 
 
 @dataclass
@@ -104,7 +126,13 @@ class IngestEngine:
         allowed_extensions: list[str],
         chunk_size: int,
         chunk_overlap: int,
+        include_path_in_embedding: bool = False,
+        index_fingerprint: str = "",
     ):
+        self._include_path = include_path_in_embedding
+        self._fingerprint = hashlib.sha256(
+            f"{index_fingerprint}|{EXTRACTION_VERSION}".encode()
+        ).hexdigest()[:16]
         self._embedder = embedder
         self._store = store
         self._docs_dir = Path(docs_dir)
@@ -133,7 +161,13 @@ class IngestEngine:
             current_hash = _file_hash(path)
 
             previously_indexed = existing_sources.get(source_path)
-            if previously_indexed and previously_indexed.get("file_hash") == current_hash:
+            # Skip only if BOTH the file and the index-affecting settings
+            # (model, prefixes, chunking, path option, extractor) are unchanged.
+            if (
+                previously_indexed
+                and previously_indexed.get("file_hash") == current_hash
+                and previously_indexed.get("index_fingerprint") == self._fingerprint
+            ):
                 result.files_unchanged += 1
                 continue
 
@@ -154,7 +188,15 @@ class IngestEngine:
             if previously_indexed:
                 self._store.delete_by_source(source_path)
 
-            embeddings = self._embedder.embed_batch(chunks)
+            # The file path is part of what gets embedded (so folder/year
+            # names like "CrystalLake/2024" influence retrieval) but NOT part
+            # of the stored chunk text, which stays clean for the LLM context.
+            if self._include_path:
+                header = f"Document: {_humanize_path(source_path)}\n"
+                embed_inputs = [header + c for c in chunks]
+            else:
+                embed_inputs = list(chunks)
+            embeddings = self._embedder.embed_documents(embed_inputs)
             ids = [str(uuid.uuid4()) for _ in chunks]
             mtime = str(os.path.getmtime(path))
             from datetime import datetime, timezone
@@ -167,6 +209,7 @@ class IngestEngine:
                     "file_hash": current_hash,
                     "mtime": mtime,
                     "last_indexed": last_indexed,
+                    "index_fingerprint": self._fingerprint,
                 }
                 for i in range(len(chunks))
             ]

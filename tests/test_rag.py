@@ -3,24 +3,26 @@ Per the checklist's Testability section: rag_engine's grounding logic is
 the single most important piece of correctness in this project, and it
 must be testable with fakes alone — no Docker, no Ollama, no Chroma.
 """
-from app.core.rag_engine import RagEngine, NO_CONTEXT_ANSWER
+from app.core.rag_engine import RagEngine, NO_CONTEXT_ANSWER, build_system_prompt
 
 
 class FakeEmbedder:
-    def embed(self, text: str) -> list[float]:
+    def embed_query(self, text: str) -> list[float]:
         return [0.1, 0.2, 0.3]
 
-    def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        return [self.embed(t) for t in texts]
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [[0.1, 0.2, 0.3] for _ in texts]
 
 
 class FakeLLM:
     def __init__(self, canned_response: str = "A real grounded answer."):
         self.canned_response = canned_response
         self.last_user_prompt: str | None = None
+        self.last_system_prompt: str | None = None
 
     def generate(self, system_prompt: str, user_prompt: str) -> str:
         self.last_user_prompt = user_prompt
+        self.last_system_prompt = system_prompt
         return self.canned_response
 
 
@@ -141,3 +143,67 @@ def test_llm_ignoring_instructions_is_still_caught_as_ungrounded():
     result = engine.answer("q")
 
     assert result.grounded is False
+
+
+def test_reworded_refusal_is_still_ungrounded():
+    store = FakeStore([_chunk(distance=0.1)])
+    llm = FakeLLM("I don't have that information. The context only mentions something else.")
+    engine = RagEngine(
+        embedder=FakeEmbedder(), llm=llm, store=store, top_k=5,
+        similarity_distance_threshold=0.45,
+    )
+
+    assert engine.answer("q").grounded is False
+
+
+def test_curly_apostrophe_refusal_is_still_ungrounded():
+    store = FakeStore([_chunk(distance=0.1)])
+    llm = FakeLLM("I don\u2019t have that information in the documents.")
+    engine = RagEngine(
+        embedder=FakeEmbedder(), llm=llm, store=store, top_k=5,
+        similarity_distance_threshold=0.45,
+    )
+
+    assert engine.answer("q").grounded is False
+
+
+def test_llm_context_includes_source_path_header():
+    store = FakeStore([_chunk(distance=0.1, source="CrystalLake/2024/lease.pdf")])
+    llm = FakeLLM("Rent was 2900.")
+    engine = RagEngine(
+        embedder=FakeEmbedder(), llm=llm, store=store, top_k=5,
+        similarity_distance_threshold=0.45,
+    )
+
+    engine.answer("What was the rent?")
+
+    assert "[Source: CrystalLake/2024/lease.pdf]" in llm.last_user_prompt
+
+
+# ---------- prompt variants (path-as-evidence is opt-in) ----------
+
+def test_default_prompt_is_strict_and_does_not_trust_paths():
+    prompt = build_system_prompt()
+    assert "ONLY the provided context" in prompt
+    assert NO_CONTEXT_ANSWER in prompt
+    assert "trusted" not in prompt
+
+
+def test_path_as_evidence_prompt_adds_trust_paragraph_but_keeps_strictness():
+    prompt = build_system_prompt(path_as_evidence=True)
+    assert "trusted" in prompt
+    assert "ONLY the provided context" in prompt
+    assert NO_CONTEXT_ANSWER in prompt
+
+
+def test_engine_uses_default_prompt_unless_flag_set():
+    store = FakeStore([_chunk(distance=0.1)])
+    llm_default = FakeLLM("ok")
+    RagEngine(embedder=FakeEmbedder(), llm=llm_default, store=store, top_k=5,
+              similarity_distance_threshold=0.45).answer("q")
+    assert "trusted" not in llm_default.last_system_prompt
+
+    llm_flag = FakeLLM("ok")
+    RagEngine(embedder=FakeEmbedder(), llm=llm_flag, store=store, top_k=5,
+              similarity_distance_threshold=0.45, path_as_evidence=True).answer("q")
+    assert "trusted" in llm_flag.last_system_prompt

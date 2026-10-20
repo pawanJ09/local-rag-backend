@@ -80,6 +80,7 @@ class ChromaStore:
                     "file_hash": meta.get("file_hash", ""),
                     "mtime": meta.get("mtime", ""),
                     "last_indexed": meta.get("last_indexed", ""),
+                    "index_fingerprint": meta.get("index_fingerprint", ""),
                 }
             sources[src]["chunk_count"] += 1
         return sources

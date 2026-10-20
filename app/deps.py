@@ -33,6 +33,8 @@ def get_ollama_client() -> OllamaClient:
         host=settings.ollama_host,
         embedding_model=settings.embedding_model,
         llm_model=settings.llm_model,
+        query_prefix=settings.embedding_query_prefix,
+        document_prefix=settings.embedding_document_prefix,
     )
 
 
@@ -61,6 +63,8 @@ def get_ingest_engine(
         allowed_extensions=settings.allowed_extensions_list,
         chunk_size=settings.chunk_size,
         chunk_overlap=settings.chunk_overlap,
+        include_path_in_embedding=settings.embed_include_path,
+        index_fingerprint=settings.index_fingerprint,
     )
 
 
@@ -76,6 +80,7 @@ def get_rag_engine(
         store=store,
         top_k=settings.top_k,
         similarity_distance_threshold=settings.similarity_distance_threshold,
+        path_as_evidence=settings.path_as_evidence,
     )
 
 

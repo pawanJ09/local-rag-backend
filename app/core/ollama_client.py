@@ -9,15 +9,32 @@ import httpx
 
 
 class OllamaClient:
-    def __init__(self, host: str, embedding_model: str, llm_model: str, timeout: float = 120.0):
+    def __init__(
+        self,
+        host: str,
+        embedding_model: str,
+        llm_model: str,
+        timeout: float = 120.0,
+        query_prefix: str = "",
+        document_prefix: str = "",
+        transport: httpx.BaseTransport | None = None,
+    ):
         self.host = host.rstrip("/")
         self.embedding_model = embedding_model
         self.llm_model = llm_model
-        self._client = httpx.Client(base_url=self.host, timeout=timeout)
+        # Task prefixes, e.g. nomic-embed-text expects "search_query" for
+        # questions and "search_document" for stored text. Empty = none.
+        self.query_prefix = query_prefix
+        self.document_prefix = document_prefix
+        self._client = httpx.Client(base_url=self.host, timeout=timeout, transport=transport)
 
     # ---- EmbeddingProvider ----
 
-    def embed(self, text: str) -> list[float]:
+    @staticmethod
+    def _with_prefix(prefix: str, text: str) -> str:
+        return f"{prefix}: {text}" if prefix else text
+
+    def _embed_raw(self, text: str) -> list[float]:
         resp = self._client.post(
             "/api/embeddings",
             json={"model": self.embedding_model, "prompt": text},
@@ -25,11 +42,12 @@ class OllamaClient:
         resp.raise_for_status()
         return resp.json()["embedding"]
 
-    def embed_batch(self, texts: list[str]) -> list[list[float]]:
+    def embed_query(self, text: str) -> list[float]:
+        return self._embed_raw(self._with_prefix(self.query_prefix, text))
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
         # Ollama's /api/embeddings is single-text; batch by looping.
-        # (Kept here rather than in the engine so callers never need to
-        # know this is sequential under the hood.)
-        return [self.embed(t) for t in texts]
+        return [self._embed_raw(self._with_prefix(self.document_prefix, t)) for t in texts]
 
     # ---- LLMProvider ----
 

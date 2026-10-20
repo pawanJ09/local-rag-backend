@@ -118,6 +118,27 @@ the folder must be under a path Docker Desktop is allowed to share.
   Existing indexed PDFs must be re-ingested (delete their sources or reset
   `chroma_data/`), since unchanged files are skipped by hash. Limit: other
   scanned or image-only PDFs still yield no text (no OCR).
+- **Retrieval quality changes (found with real lease PDFs), all configurable.**
+  - Embeddings use task prefixes (`EMBEDDING_QUERY_PREFIX` /
+    `EMBEDDING_DOCUMENT_PREFIX`; defaults for `nomic-embed-text`, empty = none).
+    Provider methods are `embed_query` / `embed_documents`.
+  - `EMBED_INCLUDE_PATH` (default `false`): when `true`, each chunk is embedded
+    with a readable form of its folder/file name (e.g. `Document: Crystal Lake /
+    2024 / Lease Agreement`); the stored chunk text stays clean. Off by default
+    because folder names mean nothing in some collections. Not yet measured
+    against a labelled question set.
+  - `PATH_AS_EVIDENCE` (default `false`): when `true`, the system prompt tells
+    the model folder/file names are trusted metadata. Strict by default,
+    because misleading folder names would otherwise mislead the model.
+  - `index_fingerprint`: a hash of the settings that change stored vectors
+    (embedding model, document prefix, path option, chunk size/overlap) plus
+    an extraction version. Files indexed under a different fingerprint are
+    re-indexed automatically on the next ingest, so changing these settings
+    no longer requires resetting `chroma_data/`.
+  - Any answer containing "I don't have that information" is reported
+    `grounded: false`, even if the model rewords the sentence.
+- **New test file `tests/test_ollama_client.py`** (not in the original file
+  list) covers the prefix behaviour with a mocked HTTP transport.
 - **Chunking is character-count based**, not token-based (no tokenizer
   dependency pulled in). `CHUNK_SIZE`/`CHUNK_OVERLAP` are in characters.
   Simple and dependency-free; can swap for a token-aware splitter later if

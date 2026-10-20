@@ -17,10 +17,12 @@ class EmbeddingProvider(Protocol):
     """Turns text into a vector. Must be the SAME provider/model used for
     both ingestion and querying, or vectors won't be comparable."""
 
-    def embed(self, text: str) -> list[float]:
+    def embed_query(self, text: str) -> list[float]:
+        """Embed a user question (some models want a query-specific prefix)."""
         ...
 
-    def embed_batch(self, texts: list[str]) -> list[list[float]]:
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        """Embed document chunks (some models want a document-specific prefix)."""
         ...
 
 
