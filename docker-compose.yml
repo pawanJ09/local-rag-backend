@@ -1,0 +1,40 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ./ollama_data:/root/.ollama
+    # NOTE (flagged nuance, per our earlier discussion): running Ollama in
+    # Docker means CPU-only inference on macOS (Docker Desktop doesn't pass
+    # Metal/GPU through to containers). On Linux+NVIDIA, GPU passthrough is
+    # possible by uncommenting the block below. This is a deliberate
+    # tradeoff for full portability ("ship everything in Docker") over
+    # host-specific performance.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    depends_on:
+      - ollama
+    volumes:
+      - ./docs:/data/docs:ro
+      - ./chroma_data:/data/chroma
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
+      - LLM_MODEL=${LLM_MODEL:-llama3.1:8b}
+      - CHROMA_DIR=/data/chroma
+      - DOCS_DIR=/data/docs
+      - API_KEY=${API_KEY:-changeme-local-dev-key}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173}
+    restart: unless-stopped
