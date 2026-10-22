@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import get_settings, Settings
+from app.core.ingest_engine import IngestResult
 from app.core.rag_engine import RagAnswer
 from app.deps import (
     get_ingest_engine,
@@ -28,8 +29,12 @@ def override_settings():
         return Settings(API_KEY=API_KEY, ALLOWED_ORIGINS="http://localhost:5173")
 
     app.dependency_overrides[get_settings] = _settings
+    # Route tests must never build the real Chroma/Ollama clients: on a CI
+    # runner there is no /data folder, and these tests must not need one.
+    app.dependency_overrides[get_vector_store] = lambda: FakeStore()
+    app.dependency_overrides[get_ollama_client] = lambda: FakeOllama()
     yield
-    app.dependency_overrides.pop(get_settings, None)
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture
@@ -66,8 +71,35 @@ class FakeRagEngine:
 
 
 class FakeJobTracker:
+    """Records what the background ingest job does to it."""
+
+    def __init__(self):
+        self.events = []
+
     def create_job(self):
         return "job-abc"
+
+    def mark_running(self, job_id):
+        self.events.append(("running", job_id))
+
+    def mark_completed(self, job_id, **kwargs):
+        self.events.append(("completed", job_id, kwargs["files_indexed"]))
+
+    def mark_failed(self, job_id, error):
+        self.events.append(("failed", job_id, error))
+
+    def get(self, job_id):
+        return None
+
+
+class FakeIngestEngine:
+    def __init__(self, error=None):
+        self.error = error
+
+    def run(self):
+        if self.error:
+            raise RuntimeError(self.error)
+        return IngestResult(files_scanned=2, files_indexed=1, files_skipped=1, files_unchanged=0)
 
 
 def _override_auth_ok():
@@ -96,7 +128,7 @@ def test_health_ok(client):
 
 def test_query_requires_api_key(client):
     resp = client.post("/query", json={"question": "hi"})
-    assert resp.status_code in (401, 422)  # 422 if header missing entirely under strict Header(...)
+    assert resp.status_code == 401
 
 
 def test_query_rejects_wrong_api_key(client):
@@ -150,15 +182,31 @@ def test_list_sources(client):
 
 # ---------- /ingest ----------
 
-def test_trigger_ingest_returns_job_id(client):
+def test_trigger_ingest_returns_job_id_and_runs_the_job(client):
+    tracker = FakeJobTracker()
     app.dependency_overrides[require_api_key] = lambda: None
-    app.dependency_overrides[get_ingest_engine] = lambda: None  # background task, not invoked synchronously in test
-    app.dependency_overrides[get_job_tracker] = lambda: FakeJobTracker()
+    app.dependency_overrides[get_ingest_engine] = lambda: FakeIngestEngine()
+    app.dependency_overrides[get_job_tracker] = lambda: tracker
 
     resp = client.post("/ingest", headers={"X-API-Key": API_KEY})
 
     assert resp.status_code == 200
     assert resp.json()["job_id"] == "job-abc"
+    # The test client finishes background tasks before returning.
+    assert tracker.events == [("running", "job-abc"), ("completed", "job-abc", 1)]
+    _clear_overrides()
+
+
+def test_failed_ingest_job_is_recorded_as_failed(client):
+    tracker = FakeJobTracker()
+    app.dependency_overrides[require_api_key] = lambda: None
+    app.dependency_overrides[get_ingest_engine] = lambda: FakeIngestEngine(error="boom")
+    app.dependency_overrides[get_job_tracker] = lambda: tracker
+
+    resp = client.post("/ingest", headers={"X-API-Key": API_KEY})
+
+    assert resp.status_code == 200
+    assert tracker.events == [("running", "job-abc"), ("failed", "job-abc", "boom")]
     _clear_overrides()
 
 

@@ -85,10 +85,13 @@ def get_rag_engine(
 
 
 def require_api_key(
-    x_api_key: str = Header(..., alias="X-API-Key"),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
     settings: Settings = Depends(get_settings),
 ) -> None:
-    if x_api_key != settings.api_key:
+    # A missing header is treated like a wrong key: 401 right away, before any
+    # other dependency (Chroma, Ollama) is built. With a required Header(...)
+    # FastAPI answered 422 only after building them.
+    if x_api_key is None or x_api_key != settings.api_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing X-API-Key"
         )

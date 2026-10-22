@@ -30,6 +30,7 @@ Machine-readable schema (source of truth for UI/CLI types): `http://localhost:80
 ## API contract
 
 All routes except `/health` require an `X-API-Key` header matching `API_KEY`.
+A missing or wrong key returns `401`.
 
 | Method | Path | Purpose |
 |---|---|---|
